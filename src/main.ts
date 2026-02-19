@@ -282,7 +282,8 @@ export default class YankiPlugin extends Plugin {
 
 	updateNoteFilenames = sindreDebounce(async (userInitiated: boolean): Promise<void> => {
 		if (
-			this.settings.folders.length === 0 ||
+			// this.settings.folders.length === 0 || // Original check (patched to include auto-detected folders)
+			this.getSanitizedFolders().length === 0 ||
 			(this.settings.manageFilenames.autoRenameTrigger === 'off' && !userInitiated)
 		) {
 			return
@@ -328,7 +329,8 @@ export default class YankiPlugin extends Plugin {
 			)
 		}
 
-		if (this.settings.folders.length === 0) {
+		// if (this.settings.folders.length === 0) { // Original check (patched to include auto-detected folders)
+		if (this.getSanitizedFolders().length === 0) {
 			if (userInitiated || this.settings.verboseNotices) {
 				new Notice(
 					sanitizeHtmlToDomWithFunction(
@@ -608,14 +610,34 @@ export default class YankiPlugin extends Plugin {
 		return files
 	}
 
+	// Auto-detect folders whose name contains ［Deck］ or ［PDeck］
+	private getAutoDetectedFolders(): string[] {
+		const autoFolders: string[] = []
+		const deckPattern = /［P?Deck］/
+		Vault.recurseChildren(this.app.vault.getRoot(), (file) => {
+			if (file instanceof TFolder && deckPattern.test(file.name)) {
+				autoFolders.push(file.path)
+			}
+		})
+		return autoFolders
+	}
+
 	public getSanitizedFolders(): string[] {
-		return [
-			...new Set(
-				this.settings.folders
-					.filter((folder) => folder.trim().length > 0)
-					.map((folderPath) => normalizePath(folderPath)),
-			),
-		]
+		// --- Original implementation (commented out) ---
+		// return [
+		// 	...new Set(
+		// 		this.settings.folders
+		// 			.filter((folder) => folder.trim().length > 0)
+		// 			.map((folderPath) => normalizePath(folderPath)),
+		// 	),
+		// ]
+		// --- Patched: union manual folders with auto-detected ［Deck］/［PDeck］ folders ---
+		const manualFolders = this.settings.folders
+			.filter((folder) => folder.trim().length > 0)
+			.map((folderPath) => normalizePath(folderPath))
+		const autoFolders = this.getAutoDetectedFolders()
+			.map((folderPath) => normalizePath(folderPath))
+		return [...new Set([...manualFolders, ...autoFolders])]
 	}
 
 	// ----------------------------------------------------
