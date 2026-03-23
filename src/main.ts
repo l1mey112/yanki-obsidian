@@ -42,7 +42,6 @@ export default class YankiPlugin extends Plugin {
 	public settings: YankiPluginSettings = getYankiPluginDefaultSettings(this.app)
 	private readonly settingsTab: YankiPluginSettingTab = new YankiPluginSettingTab(this.app, this)
 	private preambleContent: string | null = null
-	private shouldInjectPreamble = false
 
 	// ----------------------------------------------------
 
@@ -372,10 +371,6 @@ export default class YankiPlugin extends Plugin {
 		// to support resolving wiki links.
 		const filePaths = files.map((file) => this.vaultPathToAbsolutePath(file.path))
 
-		// Load preamble.sty from vault root if it exists
-		await this.loadPreamble()
-		this.shouldInjectPreamble = true
-
 		try {
 			const report = await syncFiles(filePaths, this.getSyncFilesOptions(this.settings))
 
@@ -399,8 +394,10 @@ export default class YankiPlugin extends Plugin {
 			} else {
 				this.settings.stats.sync.auto++
 			}
+
+			// Sync preamble.sty to Anki card templates if present
+			await this.syncPreambleToAnkiTemplates()
 		} catch (error) {
-			this.shouldInjectPreamble = false
 			this.settings.stats.sync.errors++
 
 			// Connection errors are caught in the Yanki library, and surfaced to Obsidian in the sync report
@@ -420,8 +417,6 @@ export default class YankiPlugin extends Plugin {
 			new Notice(fragment, 15_000)
 		}
 
-		this.shouldInjectPreamble = false
-
 		// Save stats and update the settings tab
 		await this.saveSettings()
 		this.settingsTab.render()
@@ -439,13 +434,7 @@ export default class YankiPlugin extends Plugin {
 			throw new Error(`Read failed. File not found: ${filePath}`)
 		}
 
-		let content = await this.app.vault.read(file)
-
-		if (this.shouldInjectPreamble && this.preambleContent && filePath.endsWith('.md')) {
-			content = this.injectPreamble(content)
-		}
-
-		return content
+		return this.app.vault.read(file)
 	}
 
 	async fileAdapterReadBuffer(filePath: string): Promise<Uint8Array> {
@@ -668,22 +657,73 @@ export default class YankiPlugin extends Plugin {
 		}
 	}
 
-	private injectPreamble(content: string): string {
-		if (!this.preambleContent) return content
+	private async ankiConnectCall(action: string, params: Record<string, unknown> = {}): Promise<unknown> {
+		const { host, port, key } = this.settings.ankiConnect
+		const url = `${host}:${port}`
+		const body: Record<string, unknown> = { action, version: 6, params }
+		if (key) body.key = key
 
-		const preambleBlock = `$$\n${this.preambleContent}\n$$\n\n`
+		const response = await requestUrl({
+			body: JSON.stringify(body),
+			headers: { 'Content-Type': 'application/json' },
+			method: 'POST',
+			url,
+		})
 
-		// Insert after YAML frontmatter if present
-		const frontmatterMatch = /^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n/.exec(content)
-		if (frontmatterMatch) {
-			return (
-				content.slice(0, frontmatterMatch[0].length) +
-				preambleBlock +
-				content.slice(frontmatterMatch[0].length)
-			)
+		const result = response.json as { error: string | null; result: unknown }
+		if (result.error) {
+			throw new Error(`Anki-Connect error: ${result.error}`)
 		}
 
-		return preambleBlock + content
+		return result.result
+	}
+
+	private async syncPreambleToAnkiTemplates(): Promise<void> {
+		await this.loadPreamble()
+
+		const preambleHtml = this.preambleContent
+			? `<!-- YANKI_PREAMBLE_START -->\n<div style="display:none">\\[\n${this.preambleContent}\n\\]</div>\n<!-- YANKI_PREAMBLE_END -->`
+			: null
+
+		let modelNames: string[]
+		try {
+			modelNames = (await this.ankiConnectCall('modelNames')) as string[]
+		} catch {
+			return
+		}
+
+		const yankiModels = modelNames.filter((name) => name.startsWith('Yanki'))
+
+		for (const modelName of yankiModels) {
+			const templates = (await this.ankiConnectCall('modelTemplates', {
+				modelName,
+			})) as Record<string, { Back: string; Front: string }>
+
+			const updatedTemplates: Record<string, { Back: string; Front: string }> = {}
+			let changed = false
+
+			for (const [cardName, cardTemplate] of Object.entries(templates)) {
+				const preambleRegex =
+					/<!-- YANKI_PREAMBLE_START -->[\s\S]*?<!-- YANKI_PREAMBLE_END -->\n?/g
+				const cleanFront = cardTemplate.Front.replace(preambleRegex, '')
+				const cleanBack = cardTemplate.Back.replace(preambleRegex, '')
+
+				const newFront = preambleHtml ? preambleHtml + '\n' + cleanFront : cleanFront
+				const newBack = preambleHtml ? preambleHtml + '\n' + cleanBack : cleanBack
+
+				if (newFront !== cardTemplate.Front || newBack !== cardTemplate.Back) {
+					changed = true
+				}
+
+				updatedTemplates[cardName] = { Back: newBack, Front: newFront }
+			}
+
+			if (changed) {
+				await this.ankiConnectCall('updateModelTemplates', {
+					model: { name: modelName, templates: updatedTemplates },
+				})
+			}
+		}
 	}
 
 	// ----------------------------------------------------
