@@ -41,6 +41,8 @@ import { renameFiles, syncFiles } from 'yanki'
 export default class YankiPlugin extends Plugin {
 	public settings: YankiPluginSettings = getYankiPluginDefaultSettings(this.app)
 	private readonly settingsTab: YankiPluginSettingTab = new YankiPluginSettingTab(this.app, this)
+	private preambleContent: string | null = null
+	private shouldInjectPreamble = false
 
 	// ----------------------------------------------------
 
@@ -370,6 +372,10 @@ export default class YankiPlugin extends Plugin {
 		// to support resolving wiki links.
 		const filePaths = files.map((file) => this.vaultPathToAbsolutePath(file.path))
 
+		// Load preamble.sty from vault root if it exists
+		await this.loadPreamble()
+		this.shouldInjectPreamble = true
+
 		try {
 			const report = await syncFiles(filePaths, this.getSyncFilesOptions(this.settings))
 
@@ -394,6 +400,7 @@ export default class YankiPlugin extends Plugin {
 				this.settings.stats.sync.auto++
 			}
 		} catch (error) {
+			this.shouldInjectPreamble = false
 			this.settings.stats.sync.errors++
 
 			// Connection errors are caught in the Yanki library, and surfaced to Obsidian in the sync report
@@ -413,6 +420,8 @@ export default class YankiPlugin extends Plugin {
 			new Notice(fragment, 15_000)
 		}
 
+		this.shouldInjectPreamble = false
+
 		// Save stats and update the settings tab
 		await this.saveSettings()
 		this.settingsTab.render()
@@ -430,7 +439,13 @@ export default class YankiPlugin extends Plugin {
 			throw new Error(`Read failed. File not found: ${filePath}`)
 		}
 
-		return this.app.vault.read(file)
+		let content = await this.app.vault.read(file)
+
+		if (this.shouldInjectPreamble && this.preambleContent && filePath.endsWith('.md')) {
+			content = this.injectPreamble(content)
+		}
+
+		return content
 	}
 
 	async fileAdapterReadBuffer(filePath: string): Promise<Uint8Array> {
@@ -638,6 +653,37 @@ export default class YankiPlugin extends Plugin {
 		const autoFolders = this.getAutoDetectedFolders()
 			.map((folderPath) => normalizePath(folderPath))
 		return [...new Set([...manualFolders, ...autoFolders])]
+	}
+
+	// ----------------------------------------------------
+
+	// Preamble
+
+	private async loadPreamble(): Promise<void> {
+		const preambleFile = this.app.vault.getFileByPath('preamble.sty')
+		if (preambleFile) {
+			this.preambleContent = await this.app.vault.read(preambleFile)
+		} else {
+			this.preambleContent = null
+		}
+	}
+
+	private injectPreamble(content: string): string {
+		if (!this.preambleContent) return content
+
+		const preambleBlock = `$$\n${this.preambleContent}\n$$\n\n`
+
+		// Insert after YAML frontmatter if present
+		const frontmatterMatch = /^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n/.exec(content)
+		if (frontmatterMatch) {
+			return (
+				content.slice(0, frontmatterMatch[0].length) +
+				preambleBlock +
+				content.slice(frontmatterMatch[0].length)
+			)
+		}
+
+		return preambleBlock + content
 	}
 
 	// ----------------------------------------------------
