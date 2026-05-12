@@ -6,6 +6,9 @@ export type CommonProperties<T, U> = {
 	[K in keyof T & keyof U]: T[K] extends U[K] ? T[K] : never
 }
 
+/**
+ * Formats a file rename result into a user-facing notification.
+ */
 export function formatRenameResult(renameReport: RenameFilesResult): DocumentFragment {
 	const { notes } = renameReport
 
@@ -25,6 +28,9 @@ export function formatRenameResult(renameReport: RenameFilesResult): DocumentFra
 	)
 }
 
+/**
+ * Formats a sync result into a user-facing notification with action counts.
+ */
 export function formatSyncResult(syncReport: SyncFilesResult): DocumentFragment {
 	const { synced } = syncReport
 
@@ -76,43 +82,77 @@ export function formatSyncResult(syncReport: SyncFilesResult): DocumentFragment 
 	return sanitizeHTMLToDom(reportLines.join(html`<br />`))
 }
 
+/**
+ * Shallow-compares two objects by their enumerable keys and values.
+ */
 export function objectsEqual<T extends Record<string, unknown> | undefined>(a: T, b: T): boolean {
-	if (a === b) return true
-	if (a === undefined || b === undefined) return false
+	if (a === b) {
+		return true
+	}
+
+	if (a === undefined || b === undefined) {
+		return false
+	}
 
 	const aKeys = Object.keys(a)
 	const bKeys = Object.keys(b)
 
-	if (aKeys.length !== bKeys.length) return false
+	if (aKeys.length !== bKeys.length) {
+		return false
+	}
 
 	for (const key of aKeys) {
-		if (a[key] !== b[key]) return false
+		if (a[key] !== b[key]) {
+			return false
+		}
 	}
 
 	return true
 }
 
+/**
+ * Shallow-compares two arrays by index.
+ */
 export function arraysEqual<T extends undefined | unknown[]>(a: T, b: T): boolean {
-	if (a === b) return true
-	if (a === undefined || b === undefined) return false
-	if (a.length !== b.length) return false
+	if (a === b) {
+		return true
+	}
+
+	if (a === undefined || b === undefined) {
+		return false
+	}
+
+	if (a.length !== b.length) {
+		return false
+	}
 
 	for (const [i, element] of a.entries()) {
-		if (element !== b[i]) return false
+		if (element !== b[i]) {
+			return false
+		}
 	}
 
 	return true
 }
 
+/**
+ * Capitalizes the first character of a string.
+ */
 export function capitalize(text: string): string {
 	return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
+/**
+ * Checks whether a namespace string is valid and already sanitized.
+ */
 export function validateNamespace(namespace: string): boolean {
 	const sanitizedNamespace = sanitizeNamespace(namespace)
 	return sanitizedNamespace.length > 0 && namespace === sanitizedNamespace
 }
 
+/**
+ * Strips invalid characters (`*`, `:`) from a namespace string.
+ */
 export function sanitizeNamespace(namespace: string): string {
 	// Additional sanitization also happens inside Yanki
 	// Stuck with es2020?
@@ -125,17 +165,21 @@ export function sanitizeNamespace(namespace: string): string {
  */
 export function sanitizeHtmlToDomWithFunction(
 	html: string,
-	targetClass: string,
-	callback: () => void,
+	classActions: Record<string, () => void>,
 ) {
 	const fragment = sanitizeHTMLToDom(html)
-	const functionElement = fragment.querySelector(`.${targetClass}`)
-	functionElement?.addEventListener('click', callback)
+	for (const [targetClass, callback] of Object.entries(classActions)) {
+		const functionElement = fragment.querySelector(`.${targetClass}`)
+		functionElement?.addEventListener('click', callback)
+	}
+
 	return fragment
 }
 
 /**
- * Mainly for nice formatting with prettier. But the line wrapping means we have to strip surplus whitespace.
+ * Mainly for nice formatting with prettier. But the line wrapping means we have
+ * to strip surplus whitespace.
+ *
  * @public
  */
 export function html(strings: TemplateStringsArray, ...values: unknown[]): string {
@@ -150,24 +194,29 @@ export function html(strings: TemplateStringsArray, ...values: unknown[]): strin
 
 /**
  * Alternate HTML templating function.
- @todo test why this is breaking notice formatting
- @public
+ *
+ * @public
+ * @todo Test why this is breaking notice formatting
  */
 export function htmlNew(strings: TemplateStringsArray, ...values: unknown[]): string {
 	return trimLeadingIndentation(strings, ...values)
 }
 
+// eslint-disable-next-line regexp/no-unused-capturing-group
+const LEADING_SPACE_REGEX = /^(\s+)/
+const NEW_LINE_REGEX = /\r?\n/
+
 function trimLeadingIndentation(strings: TemplateStringsArray, ...values: unknown[]): string {
 	const lines = strings
 		// eslint-disable-next-line ts/no-base-to-string, unicorn/no-array-reduce
 		.reduce((result, text, i) => `${result}${text}${String(values[i] ?? '')}`, '')
-		.split(/\r?\n/)
+		.split(NEW_LINE_REGEX)
 		.filter((line) => line.trim() !== '')
 
 	// Get leading white space of first line, and trim that much white space
 	// from subsequent lines
-	// eslint-disable-next-line regexp/no-unused-capturing-group
-	const leadingSpace = /^(\s+)/.exec(lines[0])?.[0] ?? ''
+
+	const leadingSpace = LEADING_SPACE_REGEX.exec(lines[0])?.[0] ?? ''
 	const leadingSpaceRegex = new RegExp(`^${leadingSpace}`)
 	return lines.map((line) => line.replace(leadingSpaceRegex, '').trimEnd()).join('\n')
 }

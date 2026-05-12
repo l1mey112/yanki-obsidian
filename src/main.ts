@@ -298,8 +298,7 @@ export default class YankiPlugin extends Plugin {
 					sanitizeHtmlToDomWithFunction(
 						html`<strong>Anki note file rename:</strong><br />No flashcard notes found to rename.
 							Check your flashcard folders in Yanki's <a class="settings">settings tab</a>.`,
-						'settings',
-						this.openSettingsTab,
+						{ settings: this.openSettingsTab },
 					),
 				)
 			}
@@ -337,8 +336,7 @@ export default class YankiPlugin extends Plugin {
 					sanitizeHtmlToDomWithFunction(
 						html`<strong>Anki sync failed:</strong><br />No flashcard folders to sync. You can
 							specify flashcard folders in Yanki's <a class="settings">settings tab</a>.`,
-						'settings',
-						this.openSettingsTab,
+						{ settings: this.openSettingsTab },
 					),
 				)
 			}
@@ -355,8 +353,7 @@ export default class YankiPlugin extends Plugin {
 					sanitizeHtmlToDomWithFunction(
 						html`<strong>Anki sync failed:</strong><br />No flashcard notes found. Check your
 							flashcard folders in Yanki's <a class="settings">settings tab</a>.`,
-						'settings',
-						this.openSettingsTab,
+						{ settings: this.openSettingsTab },
 					),
 				)
 			}
@@ -411,8 +408,7 @@ export default class YankiPlugin extends Plugin {
 					<a href="https://github.com/kitschpatrol/yanki-obsidian">documentation</a>, and try again.
 					If trouble persists, please
 					<a href="https://github.com/kitschpatrol/yanki-obsidian/issues">open an issue</a>.`,
-				'settings',
-				this.openSettingsTab,
+				{ settings: this.openSettingsTab },
 			)
 			new Notice(fragment, 15_000)
 		}

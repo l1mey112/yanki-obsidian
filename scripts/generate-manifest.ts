@@ -1,7 +1,10 @@
 import type { PluginManifest } from 'obsidian'
 import fs from 'node:fs/promises'
-import packageJson from '../package.json'
+import packageJson from '../package.json' with { type: 'json' }
 
+/**
+ * Merges data from package.json into an Obsidian plugin manifest.json file
+ */
 export async function generateManifest() {
 	const inferredManifest = {
 		author: packageJson.author.name,
@@ -20,7 +23,8 @@ export async function generateManifest() {
 	// be in the root of the repository, even though it's also in the release...
 	await fs.writeFile('./manifest.json', `${JSON.stringify(manifest, undefined, 2)}\n`)
 
+	// Also copy versions file
+	await fs.copyFile('./versions.json', './dist/versions.json')
+
 	console.log(`Generated Obsidian manifest.json file.`)
 }
-
-// await generateManifest()
