@@ -38,6 +38,8 @@ import {
 } from 'obsidian'
 import { renameFiles, syncFiles } from 'yanki'
 
+const DRIVE_LETTER_REGEX = /^[A-Z]:/i
+
 export default class YankiPlugin extends Plugin {
 	public settings: YankiPluginSettings = getYankiPluginDefaultSettings(this.app)
 	private readonly settingsTab: YankiPluginSettingTab = new YankiPluginSettingTab(this.app, this)
@@ -748,7 +750,7 @@ export default class YankiPlugin extends Plugin {
 			// - POSIX: "/path/to/vault"
 			const possiblyBarePath = normalizePath(adapter.getBasePath())
 
-			return /^[A-Z]:/i.test(possiblyBarePath)
+		return DRIVE_LETTER_REGEX.test(possiblyBarePath)
 				? possiblyBarePath
 				: path.join(path.sep, possiblyBarePath)
 		}
